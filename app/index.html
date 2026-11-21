@@ -1799,12 +1799,14 @@ ENGINE.setExtras({"2":"פרשת האזינו","9":"יום כיפור","16":"סו
     var open = miss.filter(function (k) { return !isPaid(t, r, c, k); });
     var res = { all: all, miss: miss, open: open, cls: '', label: '' };
     if (!all.length || !miss.length) return res;
-    if (!open.length) { res.cls = 'mk-paid'; res.label = 'נפרע'; }
+    if (!open.length) { /* נפרע במלואו — תא רגיל */ }
     else if (open.length === all.length) { res.cls = 'mk-red'; res.label = 'חוב'; }
     else { res.cls = 'mk-org'; res.label = (all.length - open.length) + '/' + all.length; }
     return res;
   }
   var MARK_COLS = { 4: 1, 5: 1, 6: 1, 9: 1, 10: 1, 11: 1, 12: 1, 13: 1 };
+  // דף שהחוב שלו נפרע ומסמנים אותו שוב — חוב חדש
+  function clearPaid(id, r, c, k) { var t = trOf(id); if (t && t.paid) delete t.paid[markKey(r, c) + '|' + k]; }
   function toggleMark(id, r, c, k) {
     var t = trOf(id); if (!t) return;
     t.marks = t.marks || {};
@@ -1908,7 +1910,7 @@ ENGINE.setExtras({"2":"פרשת האזינו","9":"יום כיפור","16":"סו
   function onMarkCell(r, c) {
     if (!MARK_COLS[c] || viewing) return;
     var items = cellItems(r, c); if (!items.length) return;
-    if (items.length === 1) { toggleMark(items[0].id, r, c, items[0].k); return; }
+    if (items.length === 1) { var i0 = items[0]; if (i0.paid) { clearPaid(i0.id, r, c, i0.k); toggleMark(i0.id, r, c, i0.k); toggleMark(i0.id, r, c, i0.k); } else toggleMark(i0.id, r, c, i0.k); return; }
     openPicker(r, c);
   }
   var pickerAt = null;
@@ -1919,9 +1921,10 @@ ENGINE.setExtras({"2":"פרשת האזינו","9":"יום כיפור","16":"סו
     var h = '<div class="dh"><h3>' + esc(E.bText(r)) + ' · ' + esc(colName(c)) + '</h3><span style="color:var(--muted)">בחר מה לא נלמד</span><button class="btn x" id="pkClose">סגירה</button></div><div class="pk">';
     items.forEach(function (it, i) {
       var t = trOf(it.id);
-      h += '<button type="button" class="pkb' + (it.paid ? ' paid' : it.miss ? ' miss' : '') + '" data-pk="' + i + '">' + (trMulti() ? trDot(t) : '') + esc(dafLabel(it.k)) + ' · ' + (it.paid ? 'לא נלמד · נפרע' : it.miss ? 'לא נלמד' : 'נלמד') + '</button>';
+      var open = it.miss && !it.paid; // חוב שנפרע מוצג כנלמד
+      h += '<button type="button" class="pkb' + (open ? ' miss' : '') + '" data-pk="' + i + '">' + (trMulti() ? trDot(t) : '') + esc(dafLabel(it.k)) + ' · ' + (open ? 'לא נלמד' : 'נלמד') + '</button>';
     });
-    if (items.length > 1) { var allMiss = items.every(function (it) { return it.miss; }); h += '<button type="button" class="pkb pkall" id="pkAll">' + (allMiss ? 'הכל נלמד' : 'אף דף לא נלמד') + '</button>'; }
+    if (items.length > 1) { var allMiss = items.every(function (it) { return it.miss && !it.paid; }); h += '<button type="button" class="pkb pkall" id="pkAll">' + (allMiss ? 'הכל נלמד' : 'אף דף לא נלמד') + '</button>'; }
     h += '</div><p class="pk-n">דף שסומן "לא נלמד" נוסף לחובות של המסלול שלו.</p>';
     var box;
     if (VIEW === 'phone') {
@@ -1936,9 +1939,10 @@ ENGINE.setExtras({"2":"פרשת האזינו","9":"יום כיפור","16":"סו
     box.querySelector('#pkClose').onclick = closePicker;
     var pa = box.querySelector('#pkAll');
     if (pa) pa.onclick = function () {
-      var allMiss = items.every(function (it) { return it.miss; });
+      var allMiss = items.every(function (it) { return it.miss && !it.paid; });
       items.forEach(function (it) {
-        if (it.miss !== !allMiss) return;
+        if (it.paid) { if (!allMiss) clearPaid(it.id, r, c, it.k); return; }
+        if (it.miss !== allMiss) return;
         var tt = trOf(it.id); tt.marks = tt.marks || {};
         var key = markKey(r, c), list = tt.marks[key] || [], i = list.indexOf(it.k);
         if (allMiss) { if (i >= 0) list.splice(i, 1); } else if (i < 0) list.push(it.k);
@@ -1947,7 +1951,7 @@ ENGINE.setExtras({"2":"פרשת האזינו","9":"יום כיפור","16":"סו
       scheduleSave(true); renderRows(true); renderToday(); if (VIEW === 'phone') renderPhone(); openPicker(r, c);
     };
     box.querySelectorAll('[data-pk]').forEach(function (b) {
-      b.onclick = function () { var it = items[+b.dataset.pk]; toggleMark(it.id, r, c, it.k); };
+      b.onclick = function () { var it = items[+b.dataset.pk]; if (it.paid) { clearPaid(it.id, r, c, it.k); scheduleSave(true); renderRows(true); renderToday(); if (VIEW === 'phone') renderPhone(); openPicker(r, c); } else toggleMark(it.id, r, c, it.k); };
     });
   }
   function closePicker() {
