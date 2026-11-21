@@ -348,6 +348,10 @@ html[data-view="phone"] .pad { padding-inline: 12px; }
 .grow > div.mk:hover { background: color-mix(in srgb, var(--accent-soft) 60%, transparent); }
 .grow > div.mk-red, .al.mk-red, .pd-row .v.mk-red { background: #fde2e2; color: #a3292a; }
 .grow > div.mk-org, .al.mk-org, .pd-row .v.mk-org { background: #ffe7c7; color: #8a4b00; }
+.grow > div.mk-paid, .al.mk-paid, .pd-row .v.mk-paid { background: #e3f3ea; color: #1d6b45; }
+.pkb.paid { background: #e3f3ea; color: #1d6b45; border-color: #1d6b45; }
+.grow > div.mk-red .cell-in, .grow > div.mk-org .cell-in, .grow > div.mk-paid .cell-in { background: transparent; }
+.grow > div.mk-paid .cell-in { background: transparent; }
 .mk-l { font-size: .72rem; font-weight: 700; }
 .alls { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; width: 100%; overflow: hidden; }
 .al { display: flex; align-items: flex-start; gap: 4px; font-size: .78rem; line-height: 1.25; border-radius: 4px; padding: 0 3px; max-width: 100%; overflow: hidden; }
@@ -356,11 +360,21 @@ html[data-view="phone"] .pad { padding-inline: 12px; }
 .pk { display: flex; flex-wrap: wrap; gap: 8px; }
 .pkb { min-height: 44px; min-width: 150px; display: inline-flex; align-items: center; gap: 8px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); color: var(--ink); font: inherit; font-weight: 700; cursor: pointer; }
 .pkb.miss { background: #fde2e2; color: #a3292a; border-color: #a3292a; }
+.pkb.pkall { border-style: dashed; color: var(--muted); }
 .pk-n { color: var(--muted); font-size: .85rem; margin: 8px 0 0; }
 .pk-bg { position: fixed; inset: 0; background: rgba(10, 18, 28, .45); z-index: 60; }
 .pk-sheet { position: fixed; inset-inline: 0; bottom: 0; z-index: 61; border-radius: 18px 18px 0 0; max-height: 70vh; padding-bottom: 22px; }
 .pk-sheet .pkb { flex: 1 1 100%; justify-content: space-between; }
-.pd-tr { background: var(--surface-2); border-bottom: 1px solid var(--line); padding: 8px 12px; }
+.pd-tr { background: var(--surface-2); border-bottom: 1px solid var(--line); padding: 8px 12px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.pd-tr .mmbtn { min-height: 40px; }
+.pd-mmb { padding: 8px 12px 0; }
+/* מצב סימון חובות */
+.mmbtn { color: #b5452f; border-color: #b5452f; font-weight: 700; }
+.mmbtn[aria-pressed="true"] { background: #b5452f; color: #fff; }
+.mm-ban { flex: 1 1 100%; order: 9; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; background: #fbeae6; border: 1px solid #b5452f; color: #6e2516; border-radius: 10px; padding: 8px 14px; }
+.mm-ban button { margin-inline-start: auto; background: #b5452f; color: #fff; border-color: #b5452f; font-weight: 700; }
+html.mm-on .scroller { outline: 3px solid #b5452f; outline-offset: -1px; }
+html.mm-on .pd-card { border: 3px solid #b5452f; }
 .pd-tr .trtabs button { min-height: 40px; }
 .pd-row .v.mk { cursor: pointer; border-radius: 6px; padding: 4px 6px; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
 .pd-wk { min-height: 46px; width: 100%; }
@@ -368,6 +382,9 @@ html[data-view="phone"] .pad { padding-inline: 12px; }
 .trrow small { color: var(--muted); }
 .trrow .sp { flex: 1; }
 .trh { display: flex; align-items: center; gap: 8px; margin: 18px 0 8px; font-size: 1rem; }
+.cwrap.sm { margin: 0 -6px; width: calc(100% + 12px); }
+.cwrap.sm .mval { font-size: .8rem; line-height: 1.15; padding: 1px 3px; }
+.grow > div.mk-red .cell-in, .grow > div.mk-org .cell-in { background: transparent; }
 </style>
 
 <div id="app">
@@ -1610,7 +1627,7 @@ ENGINE.setExtras({"2":"פרשת האזינו","9":"יום כיפור","16":"סו
   function trimRows(rows) { var n = lastFilled(rows) + 1; return rows.slice(0, n); }
   function metaDoc(st) {
     var S = st || PS(), m = { v: 2, sys: S.sys, nosaf: trimRows(S.nosaf), chovot: trimRows(S.chovot), log: S.log.slice(-200) };
-    if (!st && TR.list.length > 1) m.tracks = trMeta();
+    if (!st && (TR.list.length > 1 || Object.keys(TR.list[0].marks || {}).length)) m.tracks = trMeta();
     return m;
   }
   function allBlocks(st) {
@@ -1686,10 +1703,35 @@ ENGINE.setExtras({"2":"פרשת האזינו","9":"יום כיפור","16":"סו
   function trCur() { return trOf(TR.view) || trOf(TR.active); }
   function isFrameView() { var t = trOf(TR.view); return !!(t && t.kind === 'frame'); }
   function isAllView() { return TR.view === 'all'; }
+  // מצב סימון חובות: במסלול האישי לחיצה מסמנת במקום להקליד. במסגרת — תמיד.
+  function isMarkView() { return isFrameView() || (TR.markMode && TR.view === 'me' && !viewing); }
+  function setMarkMode(on) {
+    on = !!on && TR.view === 'me' && !viewing;
+    if (on === !!TR.markMode) return;
+    TR.markMode = on;
+    document.documentElement.classList.toggle('mm-on', on);
+    if (pickerAt) closePicker();
+    var ae = document.activeElement; if (on && ae && ae.blur) ae.blur();
+    renderToday(); setupGrid(); if (VIEW === 'phone') renderPhone();
+  }
+  function markBtnHtml() {
+    if (TR.view !== 'me' || viewing) return '';
+    return '<button type="button" class="btn mmbtn" id="mmBtn" aria-pressed="' + (TR.markMode ? 'true' : 'false') + '">' + (TR.markMode ? '✓ ' : '') + 'סימון חובות</button>';
+  }
+  function mmBannerHtml() {
+    if (!TR.markMode || TR.view !== 'me') return '';
+    return '<div class="mm-ban"><b>מצב סימון חובות</b><span>' + (VIEW === 'phone' ? 'לחיצה על שורה מסמנת שלא נלמד. לסיום — "סיום".' : 'לחיצה על תא מסמנת שלא נלמד, לחיצה נוספת מבטלת. תא עם כמה דפים — נפתחת רשימה. אין הקלדה במצב הזה.') + '</span><button type="button" class="btn" id="mmEnd">סיום</button></div>';
+  }
+  function bindMarkMode(root) {
+    var b = root.querySelector('#mmBtn'); if (b) b.onclick = function () { setMarkMode(!TR.markMode); };
+    var e = root.querySelector('#mmEnd'); if (e) e.onclick = function () { setMarkMode(false); };
+  }
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && TR.markMode) setMarkMode(false); });
   function trSanitize(t) {
     var o = { id: t.id, name: t.name, kind: t.kind, color: t.color };
     if (t.hidden) o.hidden = true;
-    if (t.kind === 'frame') { o.weeks = t.weeks || []; o.marks = t.marks || {}; o.paid = t.paid || {}; o.weekOk = t.weekOk || ''; o.created = t.created || ''; o.updated = t.updated || ''; o.lastRow = t.lastRow || 0; }
+    o.marks = t.marks || {}; o.paid = t.paid || {};
+    if (t.kind === 'frame') { o.weeks = t.weeks || []; o.weekOk = t.weekOk || ''; o.created = t.created || ''; o.updated = t.updated || ''; o.lastRow = t.lastRow || 0; }
     return o;
   }
   function trMeta() { return TR.list.map(trSanitize); }
@@ -1748,12 +1790,19 @@ ENGINE.setExtras({"2":"פרשת האזינו","9":"יום כיפור","16":"סו
   function dafLabel(k) { var p = k.split('|'); return p[0] + ' ' + FRAME.punct(+p[1]); }
   function markKey(r, c) { return r + ':' + c; }
   // {all:[..], miss:[..], cls:'' | 'mk-red' | 'mk-org', label}
+  function debtTotal(c) { return c === 5 ? 8 : 1; }
+  function isPaid(t, r, c, k) { return +((t.paid || {})[markKey(r, c) + '|' + k] || 0) >= debtTotal(c); }
+  // נלמד = לא סומן; חוב ששולם (נפרע) נחשב סגור
   function markInfo(t, r, c, v) {
     var all = cellDafs(v), mk = (t.marks || {})[markKey(r, c)] || [];
     var miss = mk.filter(function (k) { return all.indexOf(k) >= 0; });
-    if (!all.length || !miss.length) return { all: all, miss: miss, cls: '', label: '' };
-    if (miss.length === all.length) return { all: all, miss: miss, cls: 'mk-red', label: 'חוב' };
-    return { all: all, miss: miss, cls: 'mk-org', label: (all.length - miss.length) + '/' + all.length };
+    var open = miss.filter(function (k) { return !isPaid(t, r, c, k); });
+    var res = { all: all, miss: miss, open: open, cls: '', label: '' };
+    if (!all.length || !miss.length) return res;
+    if (!open.length) { res.cls = 'mk-paid'; res.label = 'נפרע'; }
+    else if (open.length === all.length) { res.cls = 'mk-red'; res.label = 'חוב'; }
+    else { res.cls = 'mk-org'; res.label = (all.length - open.length) + '/' + all.length; }
+    return res;
   }
   var MARK_COLS = { 4: 1, 5: 1, 6: 1, 9: 1, 10: 1, 11: 1, 12: 1, 13: 1 };
   function toggleMark(id, r, c, k) {
@@ -1800,6 +1849,7 @@ ENGINE.setExtras({"2":"פרשת האזינו","9":"יום כיפור","16":"סו
   }
   async function setView(v) {
     if (v !== 'all' && !trOf(v)) v = 'me';
+    if (TR.markMode) { TR.markMode = false; document.documentElement.classList.remove('mm-on'); }
     TR.view = v; lsSet('mz-trview', v);
     if (v !== 'all') await switchTrack(v);
     selRow = 0; $('drawer').hidden = true;
@@ -1840,7 +1890,7 @@ ENGINE.setExtras({"2":"פרשת האזינו","9":"יום כיפור","16":"סו
     trVisible().forEach(function (t) {
       var v = valIn(t.id, r, c); if (v === '') return;
       var mi = MARK_COLS[c] ? markInfo(t, r, c, v) : { cls: '', label: '' };
-      lines.push('<span class="al ' + mi.cls + '">' + trDot(t) + '<span>' + esc(v) + (mi.cls === 'mk-org' ? ' <b class="mk-l">' + esc(mi.label) + '</b>' : '') + '</span></span>');
+      lines.push('<span class="al ' + mi.cls + '">' + trDot(t) + '<span>' + esc(v) + (mi.cls === 'mk-org' || mi.cls === 'mk-paid' ? ' <b class="mk-l">' + esc(mi.label) + '</b>' : '') + '</span></span>');
     });
     return { cls: lines.length ? 'mk allc' : '', inner: lines.length ? '<div class="alls">' + lines.join('') + '</div>' : '' };
   }
@@ -1851,7 +1901,7 @@ ENGINE.setExtras({"2":"פרשת האזינו","9":"יום כיפור","16":"סו
       var t = trOf(id); if (!t) return;
       var v = valIn(id, r, c); if (v === '') return;
       var mi = markInfo(t, r, c, v);
-      mi.all.forEach(function (k) { items.push({ id: id, k: k, miss: mi.miss.indexOf(k) >= 0 }); });
+      mi.all.forEach(function (k) { items.push({ id: id, k: k, miss: mi.miss.indexOf(k) >= 0, paid: mi.miss.indexOf(k) >= 0 && mi.open.indexOf(k) < 0 }); });
     });
     return items;
   }
@@ -1869,8 +1919,9 @@ ENGINE.setExtras({"2":"פרשת האזינו","9":"יום כיפור","16":"סו
     var h = '<div class="dh"><h3>' + esc(E.bText(r)) + ' · ' + esc(colName(c)) + '</h3><span style="color:var(--muted)">בחר מה לא נלמד</span><button class="btn x" id="pkClose">סגירה</button></div><div class="pk">';
     items.forEach(function (it, i) {
       var t = trOf(it.id);
-      h += '<button type="button" class="pkb' + (it.miss ? ' miss' : '') + '" data-pk="' + i + '">' + (trMulti() ? trDot(t) : '') + esc(dafLabel(it.k)) + ' · ' + (it.miss ? 'לא נלמד' : 'נלמד') + '</button>';
+      h += '<button type="button" class="pkb' + (it.paid ? ' paid' : it.miss ? ' miss' : '') + '" data-pk="' + i + '">' + (trMulti() ? trDot(t) : '') + esc(dafLabel(it.k)) + ' · ' + (it.paid ? 'לא נלמד · נפרע' : it.miss ? 'לא נלמד' : 'נלמד') + '</button>';
     });
+    if (items.length > 1) { var allMiss = items.every(function (it) { return it.miss; }); h += '<button type="button" class="pkb pkall" id="pkAll">' + (allMiss ? 'הכל נלמד' : 'אף דף לא נלמד') + '</button>'; }
     h += '</div><p class="pk-n">דף שסומן "לא נלמד" נוסף לחובות של המסלול שלו.</p>';
     var box;
     if (VIEW === 'phone') {
@@ -1883,6 +1934,18 @@ ENGINE.setExtras({"2":"פרשת האזינו","9":"יום כיפור","16":"סו
       box = $('drawer'); box.innerHTML = h; box.hidden = false;
     }
     box.querySelector('#pkClose').onclick = closePicker;
+    var pa = box.querySelector('#pkAll');
+    if (pa) pa.onclick = function () {
+      var allMiss = items.every(function (it) { return it.miss; });
+      items.forEach(function (it) {
+        if (it.miss !== !allMiss) return;
+        var tt = trOf(it.id); tt.marks = tt.marks || {};
+        var key = markKey(r, c), list = tt.marks[key] || [], i = list.indexOf(it.k);
+        if (allMiss) { if (i >= 0) list.splice(i, 1); } else if (i < 0) list.push(it.k);
+        if (list.length) tt.marks[key] = list; else delete tt.marks[key];
+      });
+      scheduleSave(true); renderRows(true); renderToday(); if (VIEW === 'phone') renderPhone(); openPicker(r, c);
+    };
     box.querySelectorAll('[data-pk]').forEach(function (b) {
       b.onclick = function () { var it = items[+b.dataset.pk]; toggleMark(it.id, r, c, it.k); };
     });
@@ -2037,7 +2100,7 @@ ENGINE.setExtras({"2":"פרשת האזינו","9":"יום כיפור","16":"סו
     TR.list.forEach(function (t) {
       if (t.kind !== 'frame' && !Object.keys(t.marks || {}).length) return;
       var ds = autoDebts(t); if (!ds.length && t.kind !== 'frame') return;
-      h += '<h3 class="trh">' + trDot(t) + esc(t.name) + ' — דפים שסומנו "לא נלמד"</h3>';
+      h += '<h3 class="trh">' + (trMulti() ? trDot(t) : '') + esc(t.name) + ' — דפים שסומנו "לא נלמד"</h3>';
       if (!ds.length) { h += '<p class="lead">אין חובות. לחיצה על תא בלוח מסמנת שלא נלמד.</p>'; return; }
       h += '<div class="tbl-center"><div class="tbl-card"><table class="t"><thead><tr><th>תאריך</th><th>מה</th><th>דף</th><th>חוב</th><th>נפרע</th><th>יתרה</th></tr></thead><tbody>';
       ds.forEach(function (x) {
@@ -2052,7 +2115,7 @@ ENGINE.setExtras({"2":"פרשת האזינו","9":"יום כיפור","16":"סו
   }
   function bindFrameDebts(root) {
     root.querySelectorAll('[data-trp]').forEach(function (inp) {
-      inp.onchange = function () { var t = trOf(inp.dataset.trp); if (!t) return; t.paid = t.paid || {}; var n = E.Cnt(inp.value); if (n) t.paid[inp.dataset.k] = n; else delete t.paid[inp.dataset.k]; scheduleSave(true); renderChovot(); };
+      inp.onchange = function () { var t = trOf(inp.dataset.trp); if (!t) return; t.paid = t.paid || {}; var n = E.Cnt(inp.value); if (n) t.paid[inp.dataset.k] = n; else delete t.paid[inp.dataset.k]; scheduleSave(true); renderChovot(); renderRows(true); renderToday(); };
     });
   }
   // ---------- האוצר: סכום כל המסלולים (דף שנלמד בשני מסלולים נספר פעמיים) ----------
@@ -2140,7 +2203,7 @@ ENGINE.setExtras({"2":"פרשת האזינו","9":"יום כיפור","16":"סו
     }).join(' '));
     sc.style.setProperty('--minw', minTotal + 'px');
     sc.style.setProperty('--wa', (cols[0].c === 1 ? COLDEFS[0].w : 0) + 'px');
-    var roHead = isFrameView() || isAllView();
+    var roHead = isMarkView() || isAllView();
     $('ghead').innerHTML = cols.map(function (d) { return '<div class="' + (d.st ? 'st ' + d.st : '') + (d.edit ? ' edit' : '') + '">' + esc(roHead ? d.label.replace(/\s*\(למלא\)/, '') : d.label) + '</div>'; }).join('');
     $('gbody').style.height = ((E.LAST_ROW - E.FIRST_ROW + 1) * rh()) + 'px';
     renderRows(true);
@@ -2159,7 +2222,7 @@ ENGINE.setExtras({"2":"פרשת האזינו","9":"יום כיפור","16":"סו
       keep = { id: ae.id, v: ae.value, s: ae.selectionStart, e: ae.selectionEnd };
     }
     lastStart = start;
-    var cols = visCols(), html = [], fv = isFrameView(), av = isAllView();
+    var cols = visCols(), html = [], fv = isMarkView(), av = isAllView();
     for (var i = start; i < start + count; i++) {
       var r = E.FIRST_ROW + i;
       if (r > E.LAST_ROW) break;
@@ -2188,7 +2251,14 @@ ENGINE.setExtras({"2":"פרשת האזינו","9":"יום כיפור","16":"סו
           if (fc.cls) ccls += ' ' + fc.cls;
           inner = fc.inner;
           if (MARK_COLS[c] && fc.inner) ccls += '" data-c="' + c;
-        } else if (d.edit) inner = cellInput(r, c, '');
+        } else if (d.edit) {
+          inner = cellInput(r, c, '');
+          if (MARK_COLS[c] && !viewing) { var pv = E.get(r, c); if (pv !== '') { var pmi = markInfo(trOf('me'), r, c, pv); if (pmi.cls) ccls += ' ' + pmi.cls; } }
+        } else if (MARK_COLS[c] && !viewing && E.get(r, c) !== '') {
+          var pfc = frameCellHtml(r, c);
+          if (pfc.cls) ccls += ' ' + pfc.cls.replace(/^mk ?/, '');
+          inner = pfc.inner;
+        }
         else { var v = E.get(r, c); if (v !== '') inner = '<span title="' + esc(v) + '">' + esc(v) + '</span>'; }
         html.push('<div' + (ccls ? ' class="' + ccls + '"' : '') + '>' + inner + '</div>');
       }
@@ -2239,7 +2309,7 @@ ENGINE.setExtras({"2":"פרשת האזינו","9":"יום כיפור","16":"סו
         var v = E.get(r, p[0]); if (v !== '') parts.push('<span class="chip"><b>' + p[1] + '</b>' + esc(v) + '</span>');
       });
     }
-    bar.innerHTML = trTabs() + weekOkHtml() + '<div class="when">היום<small>' + (E.inRange(r) ? esc(E.bText(r)) : '') + '</small></div>' +
+    bar.innerHTML = trTabs() + markBtnHtml() + weekOkHtml() + mmBannerHtml() + '<div class="when">היום<small>' + (E.inRange(r) ? esc(E.bText(r)) : '') + '</small></div>' +
       '<div class="chips">' + (parts.length ? parts.join('') : '<span class="chip">אין לימוד רשום להיום</span>') + '</div>' +
       '<div class="tools"><button class="btn" id="goToday">קפיצה להיום</button>' +
       '<input type="date" class="btn" id="goDate" aria-label="מעבר לתאריך">' +
@@ -2247,11 +2317,11 @@ ENGINE.setExtras({"2":"פרשת האזינו","9":"יום כיפור","16":"סו
     $('goToday').onclick = function () { scrollToRow(todayRow, 1); };
     $('goDate').onchange = function (e) { var v = e.target.value; if (!v) return; var p = v.split('-'); var rr = E.rowOfDate(new Date(+p[0], +p[1] - 1, +p[2])); if (E.inRange(rr)) { selRow = rr; scrollToRow(rr, 1); renderDrawer(); } };
     $('togGH').onchange = function (e) { showHidden = e.target.checked; lsSet('mz-showGH', showHidden ? '1' : '0'); setupGrid(); };
-    bindTrTabs(bar); bindWeekOk();
+    bindTrTabs(bar); bindWeekOk(); bindMarkMode(bar);
   }
   function cellInput(r, c, ph) {
     var v = esc(E.get(r, c));
-    return '<div class="cwrap"><input class="cell-in" id="c' + c + '-' + r + '" data-r="' + r + '" data-c="' + c + '" value="' + v + '"' + (ph ? ' placeholder="' + ph + '"' : '') + ' autocomplete="off"><span class="mval">' + v + '</span></div>';
+    return '<div class="cwrap' + (String(E.get(r, c)).length > 9 && c !== 3 ? ' sm' : '') + '"><input class="cell-in" id="c' + c + '-' + r + '" data-r="' + r + '" data-c="' + c + '" value="' + v + '"' + (ph ? ' placeholder="' + ph + '"' : '') + ' autocomplete="off"><span class="mval">' + v + '</span></div>';
   }
   // ---------- תצוגת יום לטלפון ----------
   var DAYLET = ['א', 'ב', 'ג', 'ד', 'ה', 'ו', 'ש'];
@@ -2271,10 +2341,10 @@ ENGINE.setExtras({"2":"פרשת האזינו","9":"יום כיפור","16":"סו
       h += '<button type="button" class="' + cls + '" data-pr="' + rr + '">' + DAYLET[i] + '<small>' + esc(hebDay(rr)) + '</small></button>';
     }
     h += '</div>';
-    if (trMulti()) h += '<div class="pd-tr">' + trTabs() + '</div>';
+    if (trMulti() || markBtnHtml()) h += '<div class="pd-tr">' + trTabs() + markBtnHtml() + '</div>' + (TR.markMode ? '<div class="pd-mmb">' + mmBannerHtml() + '</div>' : '');
     h += '<div class="pd-body">';
     if (r !== todayRow) h += '<button type="button" class="btn pd-go" id="pdToday">חזרה להיום</button>';
-    var fvp = isFrameView(), avp = isAllView();
+    var fvp = isMarkView(), avp = isAllView();
     if (isAllView()) ensureProjAll(sun, sun + 6).then(function (got) { if (got) renderPhone(); });
     function pval(c) {
       if (avp) {
@@ -2308,7 +2378,7 @@ ENGINE.setExtras({"2":"פרשת האזינו","9":"יום כיפור","16":"סו
     if ($('pdToday')) $('pdToday').onclick = function () { pRow = todayRow; renderPhone(); };
     box.querySelectorAll('[data-pr]').forEach(function (b) { b.onclick = function () { pRow = +b.dataset.pr; renderPhone(); }; });
     box.querySelectorAll('[data-pc]').forEach(function (b) { b.onclick = function () { onMarkCell(r, +b.dataset.pc); }; });
-    bindTrTabs(box); bindWeekOk();
+    bindTrTabs(box); bindWeekOk(); bindMarkMode(box);
   }
   function bindPhone() {
     var box = $('phoneDay');
@@ -2370,8 +2440,8 @@ ENGINE.setExtras({"2":"פרשת האזינו","9":"יום כיפור","16":"סו
     win.addEventListener('click', function (e) {
       if (e.target.classList.contains('cell-in')) return;
       var row = e.target.closest('.grow'); if (!row) return;
-      if (isFrameView() || isAllView()) {
-        var cd = e.target.closest('[data-c]');
+      if (isMarkView() || isAllView()) {
+        var cd = e.target.closest('div[data-c]');
         if (cd) { onMarkCell(+row.dataset.r, +cd.dataset.c); return; }
         if (pickerAt) return;
       }
@@ -2701,6 +2771,7 @@ ENGINE.setExtras({"2":"פרשת האזינו","9":"יום כיפור","16":"סו
     refreshAll(); showTab('main');
   }
   function showTab(t) {
+    if (TR.markMode && t !== 'main') setMarkMode(false);
     current = t;
     document.querySelectorAll('#tabs button').forEach(function (b) { b.setAttribute('aria-selected', b.dataset.tab === t ? 'true' : 'false'); });
     ['main', 'nosaf', 'chovot', 'otzar', 'tools', 'users'].forEach(function (k) { $('p-' + k).hidden = k !== t; });
